@@ -1,9 +1,10 @@
-// Flags:
+// flags:
 //
-//	-config  path to the watches JSON file
+//	-config  path to the encrypted watches file
 //	-state   directory for state files
 //	-test    Discord test message
 //	-list    print the configured watches
+//	-report  send a status report from saved state, then exit
 package main
 
 import (
