@@ -10,7 +10,7 @@ on:
         type: boolean
         default: false
       report:
-        description: "send status report from saved state"
+        description: "send status report"
         type: boolean
         default: false
   repository_dispatch:
