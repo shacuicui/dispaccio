@@ -1,0 +1,8 @@
+/config/watches.json
+/watcher
+/dispaccio
+*.test
+*.out
+.DS_Store
+.env.local
+*_test.go

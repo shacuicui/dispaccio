@@ -1,0 +1,72 @@
+name: watcher
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+    inputs:
+      test_notify:
+        description: "discord test"
+        type: boolean
+        default: false
+      report:
+        description: "send status report from saved state"
+        type: boolean
+        default: false
+  repository_dispatch:
+    types: [run-watcher]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: watcher
+  cancel-in-progress: false
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout
+        uses: actions/checkout@v6
+
+      - name: set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: "1.25"
+
+      - name: build
+        run: go build -o watcher ./cmd/watcher
+
+      - name: test notification
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.test_notify }}
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+        run: ./watcher -test
+
+      - name: status report
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.report }}
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          STATE_KEY: ${{ secrets.STATE_KEY }}
+        run: ./watcher -report
+
+      - name: run watcher
+        if: ${{ !(github.event_name == 'workflow_dispatch' && (inputs.test_notify || inputs.report)) }}
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          STATE_KEY: ${{ secrets.STATE_KEY }}
+        run: ./watcher
+
+      - name: commit updated state
+        if: ${{ !(github.event_name == 'workflow_dispatch' && (inputs.test_notify || inputs.report)) }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if [ -n "$(git status --porcelain state/)" ]; then
+            git add state/
+            git commit -m "update state"
+            git push
+          else
+            echo "no state changes to commit"
+          fi
