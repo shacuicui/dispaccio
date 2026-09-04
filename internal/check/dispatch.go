@@ -140,11 +140,33 @@ func (d *DispatchCheck) Diff(old, current Snapshot) ([]Event, error) {
 					"regions": fmt.Sprintf("%d", len(now.Regions)),
 				},
 			})
-		case retcodeChanged(before.Retcode, now.Retcode):
+		case before.Configured && !now.Configured:
 			events = append(events, Event{
 				Level:  LevelChange,
-				Title:  fmt.Sprintf("%s: retcode changed for %s", d.label, version),
+				Title:  fmt.Sprintf("%s: region list REMOVED for %s", d.label, version),
 				Fields: map[string]string{"version": version},
+			})
+		case now.Configured && before.Configured && now.Hash != before.Hash:
+			events = append(events, Event{
+				Level:       LevelChange,
+				Title:       fmt.Sprintf("%s: region list changed for %s", d.label, version),
+				Description: describeRegions(now.Regions),
+				Fields: map[string]string{
+					"version":     version,
+					"regions_old": fmt.Sprintf("%d", len(before.Regions)),
+					"regions_new": fmt.Sprintf("%d", len(now.Regions)),
+				},
+			})
+		case retcodeChanged(before.Retcode, now.Retcode):
+			events = append(events, Event{
+				Level: LevelChange,
+				Title: fmt.Sprintf("%s: retcode changed for %s: %s → %s",
+					d.label, version, fmtRetcode(before.Retcode), fmtRetcode(now.Retcode)),
+				Fields: map[string]string{
+					"version":     version,
+					"retcode_old": fmtRetcode(before.Retcode),
+					"retcode_new": fmtRetcode(now.Retcode),
+				},
 			})
 		}
 	}
@@ -250,6 +272,13 @@ func retcodeChanged(a, b *int64) bool {
 	default:
 		return *a != *b
 	}
+}
+
+func fmtRetcode(rc *int64) string {
+	if rc == nil {
+		return "none"
+	}
+	return fmt.Sprintf("%d", *rc)
 }
 
 func (d *DispatchCheck) Report(current Snapshot) string {
