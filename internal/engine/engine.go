@@ -139,6 +139,7 @@ func (e *Engine) Report(ctx context.Context) (string, error) {
 	log.Printf("report: summarising %d stored watch(es)", len(e.watches))
 
 	var active []string
+	var builds []string
 	var idle []string
 	var offline []string
 	var launcher []string
@@ -158,6 +159,8 @@ func (e *Engine) Report(ctx context.Context) (string, error) {
 		line := chk.Report(snap)
 
 		switch {
+		case w.Type == "res_tracker":
+			builds = append(builds, line)
 		case w.Type == "launcher":
 			launcher = append(launcher, line)
 		case strings.Contains(line, "→"):
@@ -177,6 +180,16 @@ func (e *Engine) Report(ctx context.Context) (string, error) {
 	b.WriteString("🟢 **With region list**\n")
 	if len(active) > 0 {
 		for _, l := range active {
+			b.WriteString(l)
+			b.WriteString("\n")
+		}
+	} else {
+		b.WriteString("(none)\n")
+	}
+
+	b.WriteString("\n📀 **Resource builds**\n")
+	if len(builds) > 0 {
+		for _, l := range builds {
 			b.WriteString(l)
 			b.WriteString("\n")
 		}
