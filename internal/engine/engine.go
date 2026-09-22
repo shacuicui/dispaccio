@@ -87,10 +87,16 @@ func (e *Engine) Run(ctx context.Context) (bool, error) {
 		switch {
 		case old == nil:
 			log.Printf("%s: baseline stored", id)
+			if r.watch.Type == "res_tracker" {
+				e.archiveIndices(id, r.snapshot)
+			}
 		case len(events) > 0:
 			log.Printf("%s: %d event(s)", id, len(events))
 			if err := e.notifier.Send(r.watch.ID, events); err != nil {
 				log.Printf("%s: notify failed", id)
+			}
+			if r.watch.Type == "res_tracker" {
+				e.archiveIndices(id, r.snapshot)
 			}
 		default:
 			log.Printf("%s: no change", id)
@@ -105,6 +111,28 @@ func (e *Engine) Run(ctx context.Context) (bool, error) {
 		}
 	}
 	return changed, nil
+}
+
+func (e *Engine) archiveIndices(id string, snap check.Snapshot) {
+	targets := check.ArchiveTargets(snap)
+	if len(targets) == 0 {
+		return
+	}
+	for _, t := range targets {
+		body := check.FetchURL(t.URL)
+		if body == nil {
+			log.Printf("%s: index fetch failed", id)
+			continue
+		}
+		wrote, err := e.store.SaveArtifact(t.RelPath, body)
+		if err != nil {
+			log.Printf("%s: index save failed", id)
+			continue
+		}
+		if wrote {
+			log.Printf("%s: index archived", id)
+		}
+	}
 }
 
 func (e *Engine) Report(ctx context.Context) (string, error) {

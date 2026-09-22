@@ -46,3 +46,21 @@ func (s *Store) Save(watchID string, snap check.Snapshot) error {
 	}
 	return os.WriteFile(s.path(watchID), out, 0o644)
 }
+
+func (s *Store) SaveArtifact(relPath string, data []byte) (bool, error) {
+	full := filepath.Join(s.dir, filepath.FromSlash(relPath))
+	if _, err := os.Stat(full); err == nil {
+		return false, nil
+	}
+	if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+		return false, err
+	}
+	out, err := s.cipher.Encrypt(data)
+	if err != nil {
+		return false, err
+	}
+	if err := os.WriteFile(full, out, 0o644); err != nil {
+		return false, err
+	}
+	return true, nil
+}

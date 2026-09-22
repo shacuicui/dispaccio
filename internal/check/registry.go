@@ -12,6 +12,7 @@ var registry = map[string]Factory{
 	"http_status": NewHTTPStatusCheck,
 	"dispatch":    NewDispatchCheck,
 	"launcher":    NewLauncherCheck,
+	"res_tracker": NewResTrackerCheck,
 }
 
 func Build(typeName, label string, raw json.RawMessage) (Check, error) {
