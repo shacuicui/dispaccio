@@ -62,17 +62,16 @@ func NewResTrackerCheck(label string, raw json.RawMessage) (Check, error) {
 }
 
 type resBuild struct {
-	OK                bool   `json:"ok"`
-	Branch            string `json:"branch"`
-	ResVersion        int64  `json:"res_version"`
-	Suffix            string `json:"suffix"`
-	SilenceResVersion int64  `json:"silence_res_version"`
-	SilenceSuffix     string `json:"silence_suffix"`
-	CDNBase           string `json:"cdn_base"`
-	IndexAndroid      string `json:"index_android"`
-	IndexPC           string `json:"index_pc"`
-	IndexData         string `json:"index_data"`
-	IndexSilence      string `json:"index_silence"`
+	OK             bool   `json:"ok"`
+	Branch         string `json:"branch"`
+	ResVersion     int64  `json:"res_version"`
+	Suffix         string `json:"suffix"`
+	DataResVersion int64  `json:"data_res_version"`
+	DataSuffix     string `json:"data_suffix"`
+	CDNBase        string `json:"cdn_base"`
+	IndexAndroid   string `json:"index_android"`
+	IndexPC        string `json:"index_pc"`
+	IndexData      string `json:"index_data"`
 }
 
 func (r *ResTrackerCheck) url() string {
@@ -96,20 +95,19 @@ func (r *ResTrackerCheck) Snapshot() (Snapshot, error) {
 	}
 	if b.Branch != "" && b.ResVersion != 0 && b.CDNBase != "" {
 		b.OK = true
-		base := strings.TrimRight(b.CDNBase, "/")
-		out := fmt.Sprintf("output_%d_%s", b.ResVersion, b.Suffix)
-		r.buildLinks(&b, base, out)
+		r.buildLinks(&b)
 	}
 	return json.Marshal(b)
 }
 
-func (r *ResTrackerCheck) buildLinks(b *resBuild, base, out string) {
-	b.IndexAndroid = fmt.Sprintf("%s/game_res/%s/%s/client/Android/res_versions.json", base, b.Branch, out)
-	b.IndexPC = fmt.Sprintf("%s/game_res/%s/%s/client/StandaloneWindows64/res_versions.json", base, b.Branch, out)
-	b.IndexData = fmt.Sprintf("%s/design_data/%s/%s/client/General/data_versions.json", base, b.Branch, out)
-	if b.SilenceResVersion != 0 {
-		sout := fmt.Sprintf("output_%d_%s", b.SilenceResVersion, b.SilenceSuffix)
-		b.IndexSilence = fmt.Sprintf("%s/design_data/%s/%s/client_silence/General/silence_data_versions.json", base, b.Branch, sout)
+func (r *ResTrackerCheck) buildLinks(b *resBuild) {
+	base := strings.TrimRight(b.CDNBase, "/")
+	assets := fmt.Sprintf("output_%d_%s", b.ResVersion, b.Suffix)
+	b.IndexAndroid = fmt.Sprintf("%s/game_res/%s/%s/client/Android/res_versions.json", base, b.Branch, assets)
+	b.IndexPC = fmt.Sprintf("%s/game_res/%s/%s/client/StandaloneWindows64/res_versions.json", base, b.Branch, assets)
+	if b.DataResVersion != 0 {
+		data := fmt.Sprintf("output_%d_%s", b.DataResVersion, b.DataSuffix)
+		b.IndexData = fmt.Sprintf("%s/design_data/%s/%s/client/General/data_versions.json", base, b.Branch, data)
 	}
 }
 
@@ -128,32 +126,29 @@ func (r *ResTrackerCheck) Diff(old, current Snapshot) ([]Event, error) {
 		return nil, nil
 	}
 	if cur.ResVersion == prev.ResVersion && cur.Suffix == prev.Suffix &&
-		cur.SilenceResVersion == prev.SilenceResVersion {
+		cur.DataResVersion == prev.DataResVersion && cur.DataSuffix == prev.DataSuffix {
 		return nil, nil
 	}
 
-	title := fmt.Sprintf("%s: NEW resource build %s (res_version %d)", r.label, cur.Branch, cur.ResVersion)
+	title := fmt.Sprintf("%s: NEW resource build %s (assets %d)", r.label, cur.Branch, cur.ResVersion)
 	var desc strings.Builder
-	fmt.Fprintf(&desc, "branch: %s\nres_version: %d\nsuffix: %s\n", cur.Branch, cur.ResVersion, cur.Suffix)
-	if cur.SilenceResVersion != 0 {
-		fmt.Fprintf(&desc, "silence res_version: %d\nsilence suffix: %s\n", cur.SilenceResVersion, cur.SilenceSuffix)
-	}
+	fmt.Fprintf(&desc, "branch: %s\n", cur.Branch)
+	fmt.Fprintf(&desc, "assets res_version: %d\nassets suffix: %s\n", cur.ResVersion, cur.Suffix)
+	fmt.Fprintf(&desc, "data res_version: %d\ndata suffix: %s\n", cur.DataResVersion, cur.DataSuffix)
 	desc.WriteString("\nIndices:\n")
 	fmt.Fprintf(&desc, "Android: %s\n", cur.IndexAndroid)
 	fmt.Fprintf(&desc, "PC: %s\n", cur.IndexPC)
 	fmt.Fprintf(&desc, "data: %s\n", cur.IndexData)
-	if cur.IndexSilence != "" {
-		fmt.Fprintf(&desc, "silence: %s\n", cur.IndexSilence)
-	}
 
 	return []Event{{
 		Level:       LevelNew,
 		Title:       title,
 		Description: desc.String(),
 		Fields: map[string]string{
-			"branch":      cur.Branch,
-			"res_version": fmt.Sprintf("%d", cur.ResVersion),
-			"suffix":      cur.Suffix,
+			"branch":        cur.Branch,
+			"assets_res":    fmt.Sprintf("%d", cur.ResVersion),
+			"assets_suffix": cur.Suffix,
+			"data_res":      fmt.Sprintf("%d", cur.DataResVersion),
 		},
 	}}, nil
 }
@@ -177,15 +172,11 @@ func ArchiveTargets(snap Snapshot) []ArchiveTarget {
 		return nil
 	}
 	dir := fmt.Sprintf("builds/%s_%d", b.Branch, b.ResVersion)
-	targets := []ArchiveTarget{
+	return []ArchiveTarget{
 		{RelPath: dir + "/android.dat", URL: b.IndexAndroid},
 		{RelPath: dir + "/pc.dat", URL: b.IndexPC},
 		{RelPath: dir + "/data.dat", URL: b.IndexData},
 	}
-	if b.IndexSilence != "" {
-		targets = append(targets, ArchiveTarget{RelPath: dir + "/silence.dat", URL: b.IndexSilence})
-	}
-	return targets
 }
 
 func (r *ResTrackerCheck) Report(current Snapshot) string {
@@ -196,7 +187,7 @@ func (r *ResTrackerCheck) Report(current Snapshot) string {
 	if !b.OK {
 		return fmt.Sprintf("%s: no build", r.label)
 	}
-	return fmt.Sprintf("%s → %s res_version %d (suffix %s)", r.label, b.Branch, b.ResVersion, b.Suffix)
+	return fmt.Sprintf("%s → %s assets %d (data %d)", r.label, b.Branch, b.ResVersion, b.DataResVersion)
 }
 
 func readTag(buf []byte, i int) (field, wire, next int) {
@@ -245,10 +236,10 @@ func parseResBuild(raw []byte, b *resBuild) {
 		case 22:
 			rv, sfx, branch := parseBuildBlock(val)
 			if rv != 0 {
-				b.SilenceResVersion = rv
+				b.ResVersion = rv
 			}
 			if sfx != "" {
-				b.SilenceSuffix = sfx
+				b.Suffix = sfx
 			}
 			if b.Branch == "" && branch != "" {
 				b.Branch = branch
@@ -256,19 +247,23 @@ func parseResBuild(raw []byte, b *resBuild) {
 		case 36:
 			rv, sfx, branch := parseBuildBlock(val)
 			if rv != 0 {
-				b.ResVersion = rv
+				b.DataResVersion = rv
 			}
 			if sfx != "" {
-				b.Suffix = sfx
+				b.DataSuffix = sfx
 			}
 			if branch != "" {
 				b.Branch = branch
 			}
 		}
 	})
-	if b.ResVersion == 0 && b.SilenceResVersion != 0 {
-		b.ResVersion = b.SilenceResVersion
-		b.Suffix = b.SilenceSuffix
+	if b.ResVersion == 0 && b.DataResVersion != 0 {
+		b.ResVersion = b.DataResVersion
+		b.Suffix = b.DataSuffix
+	}
+	if b.DataResVersion == 0 && b.ResVersion != 0 {
+		b.DataResVersion = b.ResVersion
+		b.DataSuffix = b.Suffix
 	}
 }
 
